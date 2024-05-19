@@ -1,0 +1,39 @@
+{
+  "name": "get-mail-aws",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "dev": "nodemon --watch 'src/**/*.ts' --exec 'ts-node' src/index.ts",
+    "start": "node dist/app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "John Grant",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.574.0",
+    "body-parser": "^1.20.2",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "luxon": "^3.4.4",
+    "mailparser": "^3.7.1",
+    "nodemon": "^3.1.0"
+  },
+  "devDependencies": {
+    "@aws-sdk/types": "^3.567.0",
+    "@eslint/js": "^9.2.0",
+    "@types/body-parser": "^1.19.5",
+    "@types/express": "^4.17.21",
+    "@types/luxon": "^3.4.2",
+    "@types/mailparser": "^3.4.4",
+    "@types/node": "^20.12.11",
+    "eslint": "^8.56.0",
+    "globals": "^15.2.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5",
+    "typescript-eslint": "^7.8.0"
+  }
+}

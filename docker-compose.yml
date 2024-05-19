@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  get-mail-s3:
+    image: ghcr.io/johngrantdev/get-mail-s3:latest
+    container_name: get-mail-s3
+    restart: always
+    # ports:
+    #   - "87:80"
+    volumes:
+      - ./mailbox:/app/maildir
+    networks:
+      - mail_network
+
+networks:
+  mail_network:
+    driver: bridge
