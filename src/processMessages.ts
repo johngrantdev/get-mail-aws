@@ -94,22 +94,15 @@ export default async function processMessages() {
             return;
         }
 
-        // Check and handle mail.to as an array
-        if (!mail.to || (Array.isArray(mail.to) && mail.to.length === 0)) {
-            console.error("Recipient address is undefined or empty:", key);
-            return;
-        }
+        // Find recipient property within the the 'recieved' headers 'for' property
+        const receivedHeader = mail.headers.get('received')?.toString();
+        const recipientMatch = receivedHeader?.match(/for\s+([^;]+)/i);
+        const recipientEmail = recipientMatch ? recipientMatch[1].trim() : null;
 
-        const forwardedTo = mail.headers.get('x-forwarded-to')?.toString();
-        const deliveredTo = mail.headers.get('delivered-to')?.toString();
-
-        // Get the first recipient email address if array
-        const recipientEmail = forwardedTo || deliveredTo || (Array.isArray(mail.to) ? mail.to[0].value[0].address : mail.to.value[0].address);
         if (!recipientEmail) {
             console.error("No valid recipient address found:", key);
             return;
         }
-
         const mailDirPath = await setupMaildir(mailBox, recipientEmail);
         const headerDate = mail.date ? mail.date.toUTCString() : DateTime.now().toHTTP();
         const fromAddr = mail.from?.value[0].address || 'unknown';
