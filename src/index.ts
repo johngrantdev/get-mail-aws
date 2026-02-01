@@ -16,18 +16,23 @@ app.post('/sns', async (req: Request, res: Response) => {
 
     if (messageType === 'SubscriptionConfirmation') {
         console.log('Confirm the subscription by visiting:', req.body.SubscribeURL);
-    } else if (messageType === 'Notification') {
+} else if (messageType === 'Notification') {
         try {
-            // SNS Message field is a stringified JSON
             const snsData = JSON.parse(req.body.Message);
             
-            // Extract metadata provided by SES
+            // check the metadata structure comment out later..
+            console.log('Full SES Metadata:', JSON.stringify(snsData, null, 2));
+
             const recipient: string = snsData.receipt.recipients[0];
+            
             const s3Key: string = snsData.receipt.action.objectKey;
 
-            console.log(`Processing mail for: ${recipient}`);
+            if (!s3Key) {
+                throw new Error("S3 Key is missing from the notification metadata");
+            }
+
+            console.log(`Processing mail for: ${recipient} (Key: ${s3Key})`);
             
-            // Trigger the process
             await processMessages(s3Key, recipient);
         } catch (error) {
             console.error('Failed to parse SNS Notification JSON:', error);
