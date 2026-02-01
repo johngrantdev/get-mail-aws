@@ -3,6 +3,7 @@ import * as path from 'path';
 import { S3Client, GetObjectCommand, CopyObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
 import dotenv from 'dotenv';
+import { simpleParser } from 'mailparser';
 
 dotenv.config();
 
@@ -68,5 +69,37 @@ export default async function processMessages(key: string, recipientEmail: strin
         }
     } catch (error) {
         console.error(`Error processing S3 key ${key}:`, error);
+    }
+}
+
+export async function syncMissedMessages() {
+    const response = await s3Client.send(new ListObjectsV2Command({
+        Bucket: s3Bucket,
+        Delimiter: '/' 
+    }));
+
+    const pending = response.Contents?.filter(obj => obj.Key && !obj.Key.startsWith('processed/')) || [];
+    
+    for (const obj of pending) {
+        const key = obj.Key!;
+        try {
+            const { Body } = await s3Client.send(new GetObjectCommand({ Bucket: s3Bucket, Key: key }));
+            if (Body instanceof Readable) {
+                const content = await streamToString(Body);
+                
+                // For sync, we parse the email to find the recipient
+                const parsed = await simpleParser(content);
+                const recipient = parsed.to 
+                    ? (Array.isArray(parsed.to) ? parsed.to[0] : parsed.to).value[0].address 
+                    : 'unknown_recipient';
+
+                if (recipient) {
+                    await processMessages(key, recipient);
+                    console.log(`Synced missed mail for ${recipient}`);
+                }
+            }
+        } catch (err) {
+            console.error(`Failed to sync key ${key}:`, err);
+        }
     }
 }
