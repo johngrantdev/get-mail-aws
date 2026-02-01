@@ -20,11 +20,8 @@ app.post('/sns', async (req: Request, res: Response) => {
         try {
             const snsData = JSON.parse(req.body.Message);
             
-            // 1. Get the recipient
             const recipient: string = snsData.receipt.recipients[0];
             
-            // 2. Get the S3 Key from the correct path
-            // In your JSON, snsData.mail.messageId matches the S3 filename
             const s3Key: string = snsData.mail.messageId;
 
             if (!s3Key) {
@@ -33,7 +30,6 @@ app.post('/sns', async (req: Request, res: Response) => {
 
             console.log(`Processing mail for: ${recipient} (Key: ${s3Key})`);
             
-            // Pass the key to the processor
             await processMessages(s3Key, recipient);
 
         } catch (error) {
@@ -44,6 +40,19 @@ app.post('/sns', async (req: Request, res: Response) => {
     res.status(200).end();
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}/sns`);
+
+    await syncMissedMessages();
+
+    const SYNC_INTERVAL = 12 * 60 * 60 * 1000; 
+
+    setInterval(async () => {
+        console.log("Running periodic background sync...");
+        try {
+            await syncMissedMessages();
+        } catch (err) {
+            console.error("Periodic sync failed:", err);
+        }
+    }, SYNC_INTERVAL);
 });
