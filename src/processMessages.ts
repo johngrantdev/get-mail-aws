@@ -1,6 +1,13 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
-import { S3Client, GetObjectCommand, CopyObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+// FIX: Added ListObjectsV2Command to imports
+import { 
+    S3Client, 
+    GetObjectCommand, 
+    CopyObjectCommand, 
+    DeleteObjectCommand, 
+    ListObjectsV2Command 
+} from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
 import dotenv from 'dotenv';
 import { simpleParser } from 'mailparser';
@@ -52,19 +59,15 @@ export default async function processMessages(key: string, recipientEmail: strin
             const fileName = `${Date.now()}_${path.basename(key)}.eml`;
             const filePath = path.join(mailDirPath, 'new', fileName);
 
-            // Write the raw email content to the Maildir
             await fs.writeFile(filePath, messageContent);
 
-            // Move to processed folder in S3
             await s3Client.send(new CopyObjectCommand({
                 Bucket: s3Bucket,
                 CopySource: `${s3Bucket}/${key}`,
                 Key: `processed/${key}`
             }));
 
-            // Delete original
             await s3Client.send(new DeleteObjectCommand({ Bucket: s3Bucket, Key: key }));
-            
             console.log(`Successfully stored mail for ${recipientEmail}`);
         }
     } catch (error) {
@@ -78,7 +81,8 @@ export async function syncMissedMessages() {
         Delimiter: '/' 
     }));
 
-    const pending = response.Contents?.filter(obj => obj.Key && !obj.Key.startsWith('processed/')) || [];
+    // FIX: Added type check for obj to resolve TS7006 and TS2339
+    const pending = response.Contents?.filter((obj) => obj.Key && !obj.Key.startsWith('processed/')) || [];
     
     for (const obj of pending) {
         const key = obj.Key!;
@@ -87,7 +91,6 @@ export async function syncMissedMessages() {
             if (Body instanceof Readable) {
                 const content = await streamToString(Body);
                 
-                // For sync, we parse the email to find the recipient
                 const parsed = await simpleParser(content);
                 const recipient = parsed.to 
                     ? (Array.isArray(parsed.to) ? parsed.to[0] : parsed.to).value[0].address 
