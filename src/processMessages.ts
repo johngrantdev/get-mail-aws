@@ -87,22 +87,39 @@ export default async function processMessages() {
     }
   }
 
-  async function processEmail(messageContent: string, key: string) {
+async function processEmail(messageContent: string, key: string) {
+    // Skip SES System Notifications
+    if (key.includes('AMAZON_SES_SETUP_NOTIFICATION')) {
+        console.log("Skipping SES system notification:", key);
+        return;
+    }
+
     simpleParser(messageContent, async (err, mail) => {
         if (err) {
             console.error("Error parsing mail:", err);
             return;
         }
 
-        // Find recipient property within the the 'recieved' headers 'for' property
+        // Try the 'Received' header first (for BCC/Forwarding accuracy)
         const receivedHeader = mail.headers.get('received')?.toString();
         const recipientMatch = receivedHeader?.match(/for\s+([^;]+)/i);
-        const recipientEmail = recipientMatch ? recipientMatch[1].trim() : null;
+        let recipientEmail = recipientMatch ? recipientMatch[1].trim() : null;
+
+        // Fallback: Use the 'To' header if 'Received' didn't work
+        if (!recipientEmail && mail.to) {
+            // mail.to could be an array or a single object
+            const toAddress = Array.isArray(mail.to) ? mail.to[0] : mail.to;
+            recipientEmail = toAddress.value[0].address || null;
+        }
+
+        // Clean up email (remove < > if present)
+        recipientEmail = recipientEmail?.replace(/[<>]/g, '');
 
         if (!recipientEmail) {
-            console.error("No valid recipient address found:", key);
+            console.error("No valid recipient address found after fallback:", key);
             return;
         }
+
         const mailDirPath = await setupMaildir(mailBox, recipientEmail);
         const headerDate = mail.date ? mail.date.toUTCString() : DateTime.now().toHTTP();
         const fromAddr = mail.from?.value[0].address || 'unknown';
