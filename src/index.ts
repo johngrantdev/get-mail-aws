@@ -16,24 +16,26 @@ app.post('/sns', async (req: Request, res: Response) => {
 
     if (messageType === 'SubscriptionConfirmation') {
         console.log('Confirm the subscription by visiting:', req.body.SubscribeURL);
-} else if (messageType === 'Notification') {
+    } else if (messageType === 'Notification') {
         try {
             const snsData = JSON.parse(req.body.Message);
             
-            // check the metadata structure comment out later..
-            console.log('Full SES Metadata:', JSON.stringify(snsData, null, 2));
-
+            // 1. Get the recipient
             const recipient: string = snsData.receipt.recipients[0];
             
-            const s3Key: string = snsData.receipt.action.objectKey;
+            // 2. Get the S3 Key from the correct path
+            // In your JSON, snsData.mail.messageId matches the S3 filename
+            const s3Key: string = snsData.mail.messageId;
 
             if (!s3Key) {
-                throw new Error("S3 Key is missing from the notification metadata");
+                throw new Error("S3 Key (messageId) is missing from the notification.");
             }
 
             console.log(`Processing mail for: ${recipient} (Key: ${s3Key})`);
             
+            // Pass the key to the processor
             await processMessages(s3Key, recipient);
+
         } catch (error) {
             console.error('Failed to parse SNS Notification JSON:', error);
         }
