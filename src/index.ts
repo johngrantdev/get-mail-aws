@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import { json } from 'body-parser';
-import processMessages, { syncMissedMessages } from './processMessages';
+import processMessages, { syncMissedMessages, cleanupExpiredEmails, notifyAdmin } from './processMessages';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -39,15 +39,19 @@ app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}/sns`);
 
     await syncMissedMessages();
+    await cleanupExpiredEmails();
 
-    const SYNC_INTERVAL = 12 * 60 * 60 * 1000; 
+    const SYNC_INTERVAL = 12 * 60 * 60 * 1000;
 
     setInterval(async () => {
         console.log("Running periodic background sync...");
         try {
             await syncMissedMessages();
+            await cleanupExpiredEmails();
         } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
             console.error("Periodic sync failed:", err);
+            await notifyAdmin("Periodic sync failed", message);
         }
     }, SYNC_INTERVAL);
 });
