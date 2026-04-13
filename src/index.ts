@@ -20,7 +20,7 @@ app.post('/sns', async (req: Request, res: Response) => {
         try {
             const snsData = JSON.parse(req.body.Message);
             const recipient: string = snsData.receipt.recipients[0];
-            const s3Key: string = snsData.mail.messageId;
+            const s3Key: string = snsData.mail.receipt.action.objectKey;
 
             if (!s3Key) {
                 throw new Error("S3 Key (messageId) is missing from the notification.");
