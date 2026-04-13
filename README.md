@@ -2,48 +2,61 @@
 A service that fetches mail received by AWS and processes it into a generic mailbox format suitable for IMAP/POP mail servers such as Dovecot.
 
 ## What does it do?
-AWS SES has the functionality to receive email, however it does not provide IMAP or POP protocals to access emails from an email client. It can however be configured to save emails as objects in an S3 bucket and create SNS notifications.
+AWS SES has the functionality to receive email, however it does not provide IMAP or POP protocols to access emails from an email client. It can however be configured to save emails as objects in an S3 bucket and create SNS notifications.
 
-Get-Mail-AWS subscribes to the new email notification topic provided by AWS SNS. Once it recieves a HTTP/HTTPS notification, it will connect to the S3 bucket where the emails are stored, fetch any new emails and process them into the generic Maildir format that can be used by IMAP mail servers such as Dovecot.
+Get-Mail-AWS subscribes to the new email notification topic provided by AWS SNS. Once it receives a HTTP/HTTPS notification, it will connect to the S3 bucket where the emails are stored, fetch any new emails and process them into the generic Maildir format that can be used by IMAP mail servers such as Dovecot.
 
 ## Features
-- Can subscribe and recieve SNS notifications for new emails via HTTP/S requests using an express.js.
-- Stores emails within a directory of the recipient email address.
-- Stores emails within the generic Maildir email format.
+- Subscribes to and receives SNS notifications for new emails via HTTP/S using Express
+- Fetches emails from S3 using the object key provided in the SNS notification
+- Stores emails in the Maildir format, organised by recipient email address
 - Handles forwarded emails
+- Periodic background sync on startup and every 12 hours to catch any emails missed by SNS notifications
+- Automatic cleanup of processed emails from S3 after a configurable number of days
+- Admin notifications delivered directly to a local mailbox when errors or warnings occur
 
 ## Prerequisites
 - A domain name
-- activated AWS SES service (activated for public use)
-- DNS records configured for AWS SES to recieve email [See here](https://docs.aws.amazon.com/ses/latest/dg/receiving-email-setting-up.html)
-- AWS SES Email Recieving rule setup with the following:
-  - Condition of which domains or email addresses to apply rule
-  - Action to deliver emails to a dedicated S3 Bucket for emails
-  - enable SNS notification once emails are delivered to the S3 bucket.
-- A reverse proxy to serve this app publicly with a SSL certificate setup
+- Activated AWS SES service (activated for public use)
+- DNS records configured for AWS SES to receive email — [see AWS docs](https://docs.aws.amazon.com/ses/latest/dg/receiving-email-setting-up.html)
+- AWS SES email receiving rule with:
+  - Conditions specifying which domains or email addresses the rule applies to
+  - Action 1: **Deliver to Amazon S3 bucket** — with your SNS topic set in the optional **SNS topic** field
+  - No separate SNS action — the notification must come from the S3 action to include the S3 object key. A standalone SNS action embeds the full email in the notification and will reject emails larger than 150 KB.
+- A reverse proxy serving this app publicly with an SSL certificate
 
-## How to use?
-### Setting up docker container
-This app runs in a docker container and uses environment variables. The docker-compose file can be used with the provided .env.example file (save as .env and update).
+## How to use
 
-You can either build the dockerfile locally or use the image build in the docker repository in the docker-compose file.
+### Setting up the Docker container
+This app runs in a Docker container and uses environment variables. Copy `.env.example` to `.env` and fill in the values, then use `docker-compose` to start the container.
 
-### Setting up subscription to AWS SNS topic
+You can either build the Dockerfile locally or use the pre-built image referenced in the `docker-compose.yml` file.
 
-Once the docker container is configured and started with its endpoint accessible from the internet (eg. https://mail.domain.tld/sns); you can then subscribe it to the SNS topic you created for the 'emails delivered to S3' event.
+### Environment variables
 
-The steps to do this are:
-- Access the AWS SNS web platform / Subscription section.
-- Create a new subscription.
-- Set the 'Topic' as the the one used for 'emails delivered to S3' events.
-- Set the 'Protocal' as HTTPS (assuming you have a reverse proxy configured with SSL)
-- Set the 'Endpoint' as the address setup for this service with /sns endpoint eg. https://mail.domain.tld/sns
-- Once you have create the subscription AWS SNS will send a subscription request to the server. Open up the console logs for this docker container and you should see a subscription url logged in the console, copy this address.
-- Navigate to the AWS SNS subscriptiosn page and select the pending subscription, click 'Confirm Subscription' and paste the response URL.
+| Variable | Required | Description |
+|---|---|---|
+| `PORT` | No | Port to listen on (default: 80) |
+| `AWS_ACCESS_KEY_ID` | Yes | AWS credentials |
+| `AWS_SECRET_ACCESS_KEY` | Yes | AWS credentials |
+| `AWS_REGION` | Yes | AWS region |
+| `S3_BUCKET_NAME` | Yes | S3 bucket where SES stores incoming emails |
+| `MAILBOX_PATH` | Yes | Path to the root mailbox directory on the host |
+| `S3_RETENTION_DAYS` | No | Days to retain processed emails in S3 before deleting. Omit to disable cleanup. |
+| `DEFAULT_EMAIL` | No | Email address to receive admin error/warning notifications. Must already exist as a mailbox on the system. |
 
-Now when new emails are recieved the SNS service will send a notification to the get-mail-aws endpoint which will trigger the service to process any emails in the S3 bucket. After they are processed they will be put into a /processed directory in the S3 bucket so that they will not be processed again.
+### Setting up the SNS subscription
+
+Once the container is running and its endpoint is accessible from the internet (e.g. `https://mail.domain.tld/sns`):
+
+1. Go to the AWS SNS console → Subscriptions → Create subscription
+2. Set the **Topic** to the one configured in the SES S3 action
+3. Set the **Protocol** to HTTPS
+4. Set the **Endpoint** to your service URL, e.g. `https://mail.domain.tld/sns`
+5. After creating the subscription, AWS SNS will send a confirmation request to the server. Check the container logs for the confirmation URL, copy it, then confirm the subscription in the AWS SNS console.
+
+When new emails are received, SNS notifies this service which fetches the email from S3, writes it to the recipient's Maildir, then moves the S3 object to a `processed/` prefix so it is not reprocessed.
 
 ## To do
-This is currently working fine for my use case but I may implement the following at some point.
-- Integrate with a user database such as LDAP to syncronize with account settings on the mail server and only process email for known accounts (AWS SES recieving rule conditions can be used to filter what email to drop before they are stored)
-- Implement email aliases (also derived from a LDAP server)
+- Integrate with a user database such as LDAP to synchronize with account settings on the mail server and only process email for known accounts
+- Implement email aliases (also derived from an LDAP server)
