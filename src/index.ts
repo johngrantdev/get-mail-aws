@@ -1,7 +1,6 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response } from 'express';
 import { json } from 'body-parser';
-// FIX: Added syncMissedMessages to the import
-import processMessages, { syncMissedMessages } from './processMessages'; 
+import processMessages, { syncMissedMessages } from './processMessages';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -19,15 +18,16 @@ app.post('/sns', async (req: Request, res: Response) => {
     } else if (messageType === 'Notification') {
         try {
             const snsData = JSON.parse(req.body.Message);
-            const recipient: string = snsData.receipt.recipients[0];
-            const s3Key: string = snsData.mail.receipt.action.objectKey;
+            const recipient: string | undefined = snsData.receipt?.recipients?.[0];
+            const s3Key: string | undefined = snsData.receipt?.action?.objectKey;
 
-            if (!s3Key) {
-                throw new Error("S3 Key (messageId) is missing from the notification.");
+            if (!recipient || !s3Key) {
+                console.warn('SNS notification missing expected SES S3-action fields. Skipping direct processing.');
+                console.warn('Notification notificationType:', snsData.notificationType, '| action type:', snsData.receipt?.action?.type);
+            } else {
+                console.log(`Processing mail for: ${recipient} (Key: ${s3Key})`);
+                await processMessages(s3Key, recipient);
             }
-
-            console.log(`Processing mail for: ${recipient} (Key: ${s3Key})`);
-            await processMessages(s3Key, recipient);
         } catch (error) {
             console.error('Failed to parse SNS Notification JSON:', error);
         }
@@ -38,7 +38,6 @@ app.post('/sns', async (req: Request, res: Response) => {
 app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}/sns`);
 
-    // Now this will work because it is imported above
     await syncMissedMessages();
 
     const SYNC_INTERVAL = 12 * 60 * 60 * 1000; 

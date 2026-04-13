@@ -26,7 +26,7 @@ const s3Bucket = process.env.S3_BUCKET_NAME || '';
 const mailBox = process.env.MAILBOX_PATH || '';
 
 async function setupMaildir(baseDir: string, email: string): Promise<string> {
-    const sanitizedEmail = email.replace(/[^a-zA-Z0-9.-_]/g, '_');
+    const sanitizedEmail = email.replace(/[^a-zA-Z0-9.@_-]/g, '_');
     const mailDirPath = path.join(baseDir, sanitizedEmail);
     const subdirs = ['new', 'cur', 'tmp'];
     
@@ -36,12 +36,12 @@ async function setupMaildir(baseDir: string, email: string): Promise<string> {
     return mailDirPath;
 }
 
-async function streamToString(stream: Readable): Promise<string> {
+async function streamToBuffer(stream: Readable): Promise<Buffer> {
     const chunks: Uint8Array[] = [];
     for await (const chunk of stream) {
         chunks.push(chunk);
     }
-    return Buffer.concat(chunks).toString('utf-8');
+    return Buffer.concat(chunks);
 }
 
 export default async function processMessages(key: string, recipientEmail: string): Promise<void> {
@@ -53,13 +53,13 @@ export default async function processMessages(key: string, recipientEmail: strin
         const { Body } = await s3Client.send(new GetObjectCommand({ Bucket: s3Bucket, Key: key }));
 
         if (Body instanceof Readable) {
-            const messageContent = await streamToString(Body);
+            const messageBuffer = await streamToBuffer(Body);
             const mailDirPath = await setupMaildir(mailBox, recipientEmail);
-            
+
             const fileName = `${Date.now()}_${path.basename(key)}.eml`;
             const filePath = path.join(mailDirPath, 'new', fileName);
 
-            await fs.writeFile(filePath, messageContent);
+            await fs.writeFile(filePath, messageBuffer);
 
             await s3Client.send(new CopyObjectCommand({
                 Bucket: s3Bucket,
@@ -78,7 +78,6 @@ export default async function processMessages(key: string, recipientEmail: strin
 export async function syncMissedMessages() {
     const response = await s3Client.send(new ListObjectsV2Command({
         Bucket: s3Bucket,
-        Delimiter: '/' 
     }));
 
     // FIX: Added type check for obj to resolve TS7006 and TS2339
@@ -89,8 +88,8 @@ export async function syncMissedMessages() {
         try {
             const { Body } = await s3Client.send(new GetObjectCommand({ Bucket: s3Bucket, Key: key }));
             if (Body instanceof Readable) {
-                const content = await streamToString(Body);
-                
+                const content = await streamToBuffer(Body);
+
                 const parsed = await simpleParser(content);
                 const recipient = parsed.to 
                     ? (Array.isArray(parsed.to) ? parsed.to[0] : parsed.to).value[0].address 
