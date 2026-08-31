@@ -25,9 +25,13 @@ const s3Client = new S3Client({
 const s3Bucket = process.env.S3_BUCKET_NAME || '';
 const mailBox = process.env.MAILBOX_PATH || '';
 
+// One maildir per address: lowercased, so John@x and john@x don't split.
+export function maildirName(email: string): string {
+    return email.trim().toLowerCase().replace(/[^a-z0-9.@_-]/g, '_');
+}
+
 async function setupMaildir(baseDir: string, email: string): Promise<string> {
-    const sanitizedEmail = email.replace(/[^a-zA-Z0-9.@_-]/g, '_');
-    const mailDirPath = path.join(baseDir, sanitizedEmail);
+    const mailDirPath = path.join(baseDir, maildirName(email));
     const subdirs = ['new', 'cur', 'tmp'];
 
     for (const subdir of subdirs) {
@@ -48,8 +52,7 @@ export async function notifyAdmin(subject: string, body: string): Promise<void> 
     const defaultEmail = process.env.DEFAULT_EMAIL;
     if (!defaultEmail || !mailBox) return;
 
-    const sanitized = defaultEmail.replace(/[^a-zA-Z0-9.@_-]/g, '_');
-    const newDir = path.join(mailBox, sanitized, 'new');
+    const newDir = path.join(mailBox, maildirName(defaultEmail), 'new');
 
     try {
         await fs.access(newDir);
@@ -109,6 +112,15 @@ export default async function processMessages(key: string, recipientEmail: strin
     }
 }
 
+// SES stamps the envelope recipient into the Received header it prepends.
+// The To: header is not the delivery address for list/notification mail.
+export function envelopeRecipient(raw: string): string | undefined {
+    const match = raw.slice(0, 8000).match(
+        /by\s+inbound-smtp\.[^\s]*amazonaws\.com[\s\S]*?\bfor\s+<?([^\s;<>]+@[^\s;<>]+)>?\s*;/i
+    );
+    return match?.[1];
+}
+
 export async function syncMissedMessages(): Promise<void> {
     const response = await s3Client.send(new ListObjectsV2Command({
         Bucket: s3Bucket,
@@ -123,10 +135,13 @@ export async function syncMissedMessages(): Promise<void> {
             if (Body instanceof Readable) {
                 const content = await streamToBuffer(Body);
 
-                const parsed = await simpleParser(content);
-                const recipient = parsed.to
-                    ? (Array.isArray(parsed.to) ? parsed.to[0] : parsed.to).value[0].address
-                    : undefined;
+                let recipient = envelopeRecipient(content.toString('latin1'));
+                if (!recipient) {
+                    const parsed = await simpleParser(content);
+                    recipient = parsed.to
+                        ? (Array.isArray(parsed.to) ? parsed.to[0] : parsed.to).value[0].address
+                        : undefined;
+                }
 
                 if (recipient) {
                     await processMessages(key, recipient);

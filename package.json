@@ -8,7 +8,7 @@
     "build": "tsc",
     "dev": "nodemon --watch 'src/**/*.ts' --exec 'ts-node' src/index.ts",
     "start": "node dist/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "AWS_REGION=us-east-1 ts-node src/envelopeRecipient.test.ts"
   },
   "keywords": [],
   "author": "John Grant",
